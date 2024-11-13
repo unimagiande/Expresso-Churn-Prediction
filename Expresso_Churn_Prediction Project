@@ -1,0 +1,254 @@
+# Suppress warnings for cleaner output
+import warnings
+warnings.filterwarnings('ignore')
+
+import pandas as pd
+import numpy as np
+import seaborn as sns
+import matplotlib.pyplot as plt
+
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import classification_report, confusion_matrix, accuracy_score
+
+dataset = pd.read_csv("Expresso_churn_dataset.csv")
+
+dataset.head()
+
+dataset.shape
+
+# Sample 50000 random rows from the cleaned DataFrame
+dataset_sampled = df.sample(n=50000, random_state=42)
+
+dataset_sampled.head()
+
+dataset_sampled.shape
+
+dataset_sampled.info()
+
+dataset_sampled.describe()
+
+# Checking for missing values and duplicates
+dataset_sampled.isnull().sum()
+
+# Replacing missing values
+dataset_sampled['MONTANT'].fillna(dataset_sampled['MONTANT'].median(), inplace=True)
+dataset_sampled['FREQUENCE_RECH'].fillna(dataset_sampled['FREQUENCE_RECH'].median(), inplace=True)
+dataset_sampled['REVENUE'].fillna(dataset_sampled['REVENUE'].median(), inplace=True)
+dataset_sampled['ARPU_SEGMENT'].fillna(dataset_sampled['ARPU_SEGMENT'].median(), inplace=True)
+dataset_sampled['FREQUENCE'].fillna(dataset_sampled['FREQUENCE'].median(), inplace=True)
+dataset_sampled['DATA_VOLUME'].fillna(dataset_sampled['DATA_VOLUME'].median(), inplace=True)
+dataset_sampled['ON_NET'].fillna(dataset_sampled['ON_NET'].median(), inplace=True)
+dataset_sampled['ORANGE'].fillna(dataset_sampled['ORANGE'].median(), inplace=True)
+dataset_sampled['TIGO'].fillna(dataset_sampled['TIGO'].median(), inplace=True)
+dataset_sampled['ZONE1'].fillna(dataset_sampled['ZONE1'].median(), inplace=True)
+dataset_sampled['ZONE2'].fillna(dataset_sampled['ZONE2'].median(), inplace=True)
+dataset_sampled['FREQ_TOP_PACK'].fillna(dataset_sampled['FREQ_TOP_PACK'].median(), inplace=True)
+
+# Replace missing values for categorical columns with the mode
+dataset_sampled['REGION'].fillna(dataset_sampled['REGION'].mode()[0], inplace=True)
+dataset_sampled['TOP_PACK'].fillna(dataset_sampled['TOP_PACK'].mode()[0], inplace=True)
+
+dataset_sampled.isnull().sum() # Missing values filled
+
+dataset_sampled.duplicated().sum()
+
+# Churn Distribution Across Region
+plt.figure(figsize=(18, 5))
+sns.boxplot(x='REGION', y='CHURN', data=dataset_sampled)
+plt.title('Churn Distribution Across Region')
+plt.xticks(rotation=45)
+plt.show()
+
+sns.scatterplot(x='REVENUE', y='MONTANT', data=dataset_sampled, hue='CHURN')
+plt.show()
+
+from scipy import stats
+z_scores = stats.zscore(dataset_sampled['MONTANT'])
+dataset_sampled[(z_scores > 3) | (z_scores < -3)]
+
+dataset_sampled['REGION'].value_counts()
+
+dataset_sampled['TENURE'].value_counts()
+
+# Mean encoding for TENURE based on REVENUE
+mean_encoded = dataset_sampled.groupby('TENURE')['REVENUE'].mean()
+dataset_sampled['TENURE_encoded'] = dataset_sampled['TENURE'].map(mean_encoded)
+
+dataset_sampled.head()
+
+# Selecting only numeric columns for correlation
+numeric_df = dataset_sampled.select_dtypes(include=[float, int])
+correlation_matrix = numeric_df.corr()
+
+correlation_matrix
+
+# Plotting the correlation matrix
+plt.figure(figsize=(12, 8))
+sns.heatmap(correlation_matrix, annot=True, cmap='coolwarm', fmt='.2f')
+plt.title('Correlation Matrix')
+plt.show()
+
+# Modelling
+# Selecting my features and splitting the data into training and test sets
+# Split features (X) and target (y)
+X = dataset_sampled.drop(columns=[ "CHURN", "TOP_PACK", "MRG", "user_id", "REGION", "TENURE"])
+y = dataset_sampled['CHURN']
+
+# Splitting the data into training and test sets
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+print(X_train.columns)
+
+# Create a StandardScaler instance
+scaler = StandardScaler()
+
+# Fit and transform the training data
+X_train_scaled = scaler.fit_transform(X_train)
+
+# Transform the test data
+X_test_scaled = scaler.transform(X_test)
+
+# Random Forest Classifier
+from sklearn.ensemble import RandomForestClassifier
+
+rf_classifier = RandomForestClassifier(class_weight='balanced')
+
+# Fit the model to the training data
+rf_classifier.fit(X_train_scaled, y_train)
+
+# Make predictions
+y_pred = rf_classifier.predict(X_test_scaled)
+
+# Evaluate the model
+print("Accuracy Score:")
+print(accuracy_score(y_test, y_pred))
+
+print("Classification Report:")
+print(classification_report(y_test, y_pred))
+
+print("Confusion Matrix:")
+print(confusion_matrix(y_test, y_pred))
+
+# Feature Importance
+import matplotlib.pyplot as plt
+
+feature_importances = rf_classifier.feature_importances_
+features = X.columns
+importance_df = pd.DataFrame({'Feature': features, 'Importance': feature_importances})
+importance_df = importance_df.sort_values(by='Importance', ascending=False)
+
+# Plotting
+plt.figure(figsize=(12, 6))
+plt.barh(importance_df['Feature'], importance_df['Importance'])
+plt.xlabel('Importance')
+plt.title('Feature Importance in the Random Forest Classifier')
+plt.show()
+
+# Light Gradient Boosting(LGBM)
+import lightgbm as lgb
+from lightgbm import LGBMClassifier
+
+X = dataset_sampled[['FREQUENCE_RECH', 'REVENUE', 'FREQUENCE', 'DATA_VOLUME', 'ON_NET', 'ORANGE', 'REGULARITY', 'FREQ_TOP_PACK']]
+y = dataset_sampled['CHURN']
+
+# Train-test split
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+lgbm_model = LGBMClassifier(n_estimators=100, early_stopping_rounds=10, eval_metric='auc', verbose=1)
+# Fit the model
+lgbm_model.fit(X_train, y_train, eval_set=[(X_test, y_test)], eval_metric='auc')
+
+# Make predictions
+y_pred = lgbm_model.predict_proba(X_test)[:, 1]  # Get probabilities for the positive class
+y_pred_binary = [1 if x >= 0.5 else 0 for x in y_pred]
+
+# Evaluate
+accuracy = accuracy_score(y_test, y_pred_binary)
+print(f'Accuracy: {accuracy:.2f}')
+
+print("Classification Report:")
+print(classification_report(y_test, y_pred_binary))
+
+print("Confusion Matrix:")
+print(confusion_matrix(y_test, y_pred_binary))
+
+# Logistic Regression
+from sklearn.linear_model import LogisticRegression
+
+log_model= LogisticRegression(penalty = 'l1', C = 0.5, solver = 'liblinear')
+log_model.fit(X_train,y_train)
+
+logy_pred = log_model.predict(X_test)
+
+ACC = accuracy_score(logy_pred, y_test)
+conf_mat = confusion_matrix(logy_pred, y_test)
+class_report = classification_report(logy_pred, y_test)
+print(ACC)
+print(conf_mat)
+print(class_report)
+
+# LightGBM stands out as the best model overall based on my results
+
+# Saving my model
+import joblib
+joblib.dump(lgbm_model, 'expressoModel.pkl')
+
+# Create The Streamlit App
+# Create the file Expresso_Churn_Prediction_Streamlit_App.py in write mode
+with open("Expresso_Churn_Prediction_Streamlit_Pro_App.py", "w") as file:
+    # Writing the Streamlit code into the file
+    file.write("""
+# Import necessary libraries
+import streamlit as st
+import pandas as pd
+import joblib
+
+# Load the pre-trained model
+model = joblib.load("expressoModel.pkl")  
+
+# Set up the Streamlit app
+st.title('Expresso Client Churn Prediction')
+st.write("This app predicts the churn probability for Expresso clients based on their behavior.")
+
+
+# Input fields for user to enter feature values
+frequence_rech = st.number_input('Recharge Frequency (FREQUENCE_RECH)', min_value=1.0, max_value=114.0, value=11.44, step=1.0)
+revenue = st.number_input('Revenue (REVENUE)', min_value=1.0, max_value=165166.0, value= 5454.27, step=0.1)
+frequence = st.number_input('Frequency of usage (FREQUENCE)', min_value=1.0, max_value=91.0,value = 13.88, step=1.0)
+data_volume = st.number_input('Data Volume (DATA_VOLUME)', min_value=0.0, max_value=560933.0,value = 3165.06, step=0.1)
+on_net = st.number_input('On Net Usage (ON_NET)', min_value=0.0, max_value=20837.0,value = 272.18, step=1.0)
+orange = st.number_input('Orange Network Usage (ORANGE)', min_value=0.0, max_value=4743.0, value = 96.23, step=1.0)
+regularity = st.number_input('Regularity of usage (REGULARITY)', min_value=0.0, max_value=1346.0, value=7.93, step=1.0)
+freq_top_pack = st.number_input('Frequency of Top Pack (FREQ_TOP_PACK)', min_value=1.0, max_value=320.0, value=9.20, step=1.0)
+
+# Create a dictionary with the input data
+input_data = {
+    'FREQUENCE_RECH': frequence_rech,
+    'REVENUE': revenue,
+    'FREQUENCE': frequence,
+    'DATA_VOLUME': data_volume,
+    'ON_NET': on_net,
+    'ORANGE': orange,
+    'REGULARITY': regularity,
+    'FREQ_TOP_PACK': freq_top_pack
+}
+
+# Convert the dictionary to a DataFrame
+input_df = pd.DataFrame([input_data])
+
+# Predict churn probability using the loaded model
+if st.button('Predict Churn Probability'):
+    prediction = model.predict_proba(input_df)[:, 1]  # Probability of churn
+    churn_probability = round(prediction[0] * 100, 2)
+    st.write(f"The predicted churn probability is {churn_probability}%")
+
+# Option to display input data
+if st.checkbox('Show Input Data'):
+    st.write(input_df)
+
+""")
+
+
+
+
